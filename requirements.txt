@@ -1,0 +1,17 @@
+# PhotoOrganizer v2.0 — зависимости
+# Установка: pip install -r requirements.txt
+
+# Чтение EXIF из JPEG, HEIC, RAW (Canon CR2, Nikon NEF, Sony ARW и др.)
+exifread>=3.0.0
+
+# Работа с изображениями: EXIF из JPEG/TIFF, определение разрешения PNG для скриншотов
+Pillow>=10.0.0
+
+# Чтение метаданных из MP4/MOV видео (дата съёмки)
+mutagen>=1.47.0
+
+# Запись дат в EXIF JPEG файлов (вкладка «Запись EXIF»)
+piexif>=1.1.3
+
+# ── Для сборки EXE (не нужен для запуска через Python) ──────────────────────
+# pyinstaller>=6.0.0
