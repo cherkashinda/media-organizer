@@ -127,8 +127,10 @@ _SCREEN_RESOLUTIONS = {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _parse_exif_dt(value):
-    s = str(value).strip()
-    if not s or s.startswith("0000"):
+    if isinstance(value, bytes):
+        value = value.decode("ascii", errors="ignore")
+    s = str(value).strip().strip("\x00").strip()
+    if not s or s.startswith("0000") or s == "None":
         return None
     for fmt in (EXIF_FMT, EXIF_FMT[:16]):
         try:
@@ -276,20 +278,46 @@ def _google_json_date(json_path):
         pass
     return None
 
-def get_best_date(path, use_google=True):
+def _date_from_filename(path):
+    name = Path(path).stem
+    patterns = [
+        r'(\d{4})(\d{2})(\d{2})[_\-T](\d{2})(\d{2})(\d{2})',
+        r'(\d{4})[_\-](\d{2})[_\-](\d{2})[_\- T](\d{2})[_\-:\.](\d{2})[_\-:\.](\d{2})',
+        r'(\d{4})(\d{2})(\d{2})',
+        r'(\d{4})[_\-](\d{2})[_\-](\d{2})',
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, name)
+        if not m: continue
+        g = m.groups()
+        try:
+            y, mo, d = int(g[0]), int(g[1]), int(g[2])
+            if not (1990 <= y <= datetime.now().year): continue
+            if not (1 <= mo <= 12): continue
+            if not (1 <= d <= 31): continue
+            if len(g) >= 6:
+                return datetime(y, mo, d, min(int(g[3]),23), min(int(g[4]),59), min(int(g[5]),59))
+            return datetime(y, mo, d)
+        except ValueError:
+            continue
+    return None
+
+def get_best_date(path, use_google=True, use_mtime=False):
     if use_google:
         jp = _find_google_json(path)
         if jp:
             dt = _google_json_date(jp)
             if dt: return dt, "Google JSON"
+
     ext      = Path(path).suffix.lower()
     is_video = ext in VIDEO_EXTS
+
     if is_video:
         parent, stem = Path(path).parent, Path(path).stem
         for photo_ext in PHOTO_EXTS:
             sibling = parent / (stem + photo_ext)
             if sibling.exists():
-                dt, src = get_best_date(str(sibling), use_google=use_google)
+                dt, src = get_best_date(str(sibling), use_google=use_google, use_mtime=use_mtime)
                 if dt: return dt, f"Live Photo ({sibling.name})"
         dt, src = _read_video_date(path)
         if dt: return dt, src
@@ -298,6 +326,21 @@ def get_best_date(path, use_google=True):
         if dt: return dt, src
         dt, src = _exif_pil(path)
         if dt: return dt, src
+
+    # Парсинг даты из имени файла
+    dt = _date_from_filename(path)
+    if dt: return dt, "filename"
+
+    # Последний резерв — дата изменения файла
+    if use_mtime:
+        try:
+            mtime = os.path.getmtime(path)
+            dt = datetime.fromtimestamp(mtime)
+            if datetime(1995, 1, 1) <= dt <= datetime.now():
+                return dt, "file mtime"
+        except Exception:
+            pass
+
     return None, "no-date"
 
 def _zip_entry_date(info):
@@ -315,6 +358,20 @@ def _build_zip_json_index(zf):
             if bn: index[bn] = fn
     return index
 
+def open_zip_with_encoding(zpath):
+    """Открывает ZIP с правильной кодировкой для русских имён."""
+    zf = open_zip_with_encoding(zpath, "r")
+    # Проверяем нужна ли перекодировка
+    for info in zf.infolist():
+        if info.flag_bits & 0x800:  # флаг UTF-8 установлен — всё ок
+            return zf
+        try:
+            # Пробуем декодировать как CP866
+            name_bytes = info.filename.encode("cp437")
+            info.filename = name_bytes.decode("cp866")
+        except Exception:
+            pass
+    return zf
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  СКРИНШОТЫ
@@ -354,7 +411,7 @@ def scan_stats(root, progress_cb=None):
         except Exception: pass
         if ext == ".zip":
             try:
-                with zipfile.ZipFile(fpath, "r") as zf:
+                with open_zip_with_encoding(fpath, "r") as zf:
                     for info in zf.infolist():
                         if not info.is_dir():
                             add(Path(info.filename).suffix.lower(), info.file_size)
@@ -576,7 +633,8 @@ class App(tk.Tk):
         self.threads_var     = tk.IntVar(value=min(os.cpu_count() or 4, 8))
         self.show_src_var    = tk.BooleanVar(value=True)
         self.zip_delete_var  = tk.BooleanVar(value=False)
-        self.google_var      = tk.BooleanVar(value=True)
+        self.google_var      = tk.BooleanVar(value=False)
+        self.use_mtime_var   = tk.BooleanVar(value=False)
         self.skip_scr_var    = tk.BooleanVar(value=False)
         self.dry_run_var     = tk.BooleanVar(value=False)
         self.rename_var      = tk.BooleanVar(value=False)
@@ -931,6 +989,8 @@ class App(tk.Tk):
            self.google_var, fg=C["BLUE"], bold=True).pack(anchor="w")
         cb(f,"Пропускать скриншоты при сортировке",
            self.skip_scr_var, fg=C["ORANGE"]).pack(anchor="w", pady=(4,0))
+        cb(f, "Дата файла как резерв если ничего не найдено (file mtime, ненадёжно)",
+           self.use_mtime_var, fg=C["MUTED"]).pack(anchor="w", pady=(4,0))
 
         # Прогресс
         pf = tk.Frame(root,bg=C["CARD"],padx=12,pady=8); pf.pack(fill="x",pady=(0,8))
@@ -1318,7 +1378,7 @@ class App(tk.Tk):
     # ═══════════════════════════════════════════════════════════════════════════
     #  РАБОЧИЙ ПОТОК: СОРТИРОВКА
     # ═══════════════════════════════════════════════════════════════════════════
-
+    
     def _worker_sort(self, src, dst):
         mode       = self.mode_var.get()
         inc_video  = self.video_var.get()
@@ -1334,6 +1394,7 @@ class App(tk.Tk):
         year_flt   = self.year_filter_var.get()
         year_from  = self.year_from_var.get()
         year_to    = self.year_to_var.get()
+        use_mtime = self.use_mtime_var.get()
 
         extensions = PHOTO_EXTS | (VIDEO_EXTS if inc_video else set())
         self._ui(lambda: self._log("Сканирование...","head"))
@@ -1347,7 +1408,7 @@ class App(tk.Tk):
                     media_files.append(fpath)
                 elif inc_zip and ext == ".zip":
                     try:
-                        with zipfile.ZipFile(fpath,"r") as zf:
+                        with open_zip_with_encoding(fpath,"r") as zf:
                             entries = [i for i in zf.infolist()
                                        if not i.is_dir() and Path(i.filename).suffix.lower() in extensions]
                         if entries: zip_tasks.append((fpath, entries))
@@ -1409,10 +1470,11 @@ class App(tk.Tk):
                     return "ok"
                 _inc(ok=1,done=1,google=1 if is_google else 0); _tick()
                 if show_src:
-                    tag = "dry" if dry_run else ("google" if is_google else "ok")
-                    pfx = "  →  " if dry_run else "  ok  "
-                    self._ui(lambda r=rel,s=date_src,t=tag,p=pfx:
-                             self._log(f"{p}{r}  [{s}]",t))
+                    if show_src:
+                        tag = "dry" if dry_run else ("google" if is_google else "ok")
+                        pfx = "  →  " if dry_run else "  ok  "
+                        self._ui(lambda r=rel, s=date_src, t=tag, p=pfx, fp=fpath:
+                                self._log(f"{p}{r}  [{s}]  ←  {fp}", t))
                 return "ok"
             except Exception as e:
                 _inc(err=1,done=1); _tick()
@@ -1420,7 +1482,7 @@ class App(tk.Tk):
                 return "err"
 
         with ThreadPoolExecutor(max_workers=n_threads) as pool:
-            futures = {pool.submit(process,fp,lambda p=fp: get_best_date(p,use_google=use_google),mode): fp
+            futures = {pool.submit(process,fp,lambda p=fp: get_best_date(p,use_google=use_google,use_mtime=use_mtime),mode): fp
                        for fp in media_files}
             for _ in as_completed(futures): pass
 
@@ -1428,7 +1490,7 @@ class App(tk.Tk):
             zname = os.path.basename(zpath)
             self._ui(lambda n=zname,c=len(entries): self._log(f"\n[ZIP] {n}  ({c} файлов)","head"))
             zip_errs = [0]
-            with zipfile.ZipFile(zpath,"r") as zf:
+            with open_zip_with_encoding(zpath,"r") as zf:
                 json_index = _build_zip_json_index(zf) if use_google else {}
                 def make_task(info, json_idx=json_index):
                     def _task():
@@ -1456,7 +1518,7 @@ class App(tk.Tk):
                                                 except Exception: pass
                                                 break
                                 def _gd():
-                                    dt,ds = get_best_date(extracted,use_google=use_google)
+                                    dt,ds = get_best_date(extracted,use_google=use_google,use_mtime=use_mtime)
                                     if dt is None and ds=="no-date":
                                         dt2,ds2=_zip_entry_date(info)
                                         if dt2: return dt2,ds2
