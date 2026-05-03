@@ -621,7 +621,9 @@ class App(tk.Tk):
                     w.configure(state="normal")
                     for msg, tag in msgs:
                         w.insert("end", msg + "\n", tag)
-                    w.see("end")
+                    bottom = w.yview()[1]
+                    if bottom >= 0.90:
+                        w.see("end")
                     w.configure(state="disabled")
                 except Exception:
                     pass
@@ -751,7 +753,7 @@ class App(tk.Tk):
     def _make_log(self, parent, extra_tags=None):
         C = self.C
         tk.Label(parent, text="Журнал", bg=C["CARD"], fg=C["MUTED"], font=("Segoe UI",8)).pack(anchor="w")
-        w = tk.Text(parent, height=7, bg=C["LOG_BG"], fg=C["LOG_FG"],
+        w = tk.Text(parent, height=14, bg=C["LOG_BG"], fg=C["LOG_FG"],
                     font=("Consolas",8), bd=0, padx=4, pady=4, state="disabled", wrap="word")
         w.tag_configure("head",  foreground=C["MUTED"],   font=("Consolas",8,"bold"))
         w.tag_configure("pause", foreground=C["YELLOW"],  font=("Consolas",8,"bold"))
@@ -898,9 +900,32 @@ class App(tk.Tk):
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda e: canvas.itemconfig(wid, width=e.width))
         canvas.bind("<Map>", lambda e: canvas.yview_moveto(0))  # сброс позиции скролла
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)),"units"))
-        canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1,"units"))
-        canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1,"units"))
+        
+        def _on_mousewheel(e):
+            widget = e.widget
+            # Если курсор над текстовым виджетом (лог) — скролим его
+            while widget:
+                if isinstance(widget, tk.Text):
+                    return  # пусть Text сам обрабатывает
+                try: widget = widget.master
+                except: break
+            canvas.yview_scroll(int(-1*(e.delta/120)), "units")
+
+        def _on_mousewheel_linux(direction):
+            def handler(e):
+                widget = e.widget
+                while widget:
+                    if isinstance(widget, tk.Text):
+                        return
+                    try: widget = widget.master
+                    except: break
+                canvas.yview_scroll(direction, "units")
+            return handler
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        canvas.bind_all("<Button-4>", _on_mousewheel_linux(-1))
+        canvas.bind_all("<Button-5>", _on_mousewheel_linux(1))
+        
         root = tk.Frame(inner, bg=C["BG"], padx=12, pady=10); root.pack(fill="both", expand=True)
 
         self._path_row(root, "Источник", self.src_var)
