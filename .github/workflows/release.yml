@@ -3,6 +3,8 @@ name: Release
 # Запускается при публикации релиза на GitHub (Releases → Draft a new release → Publish).
 # Собранные программы прикрепляются к этому релизу автоматически.
 # Ручной запуск (Actions → Release → Run workflow) — только тестовая сборка, без релиза.
+#
+# Версия берётся из VERSION в main.py. Тег релиза должен быть v<VERSION>, иначе сборка упадёт.
 on:
   release:
     types: [published]
@@ -18,11 +20,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            asset: PhotoOrganizer-windows-x64.zip
+            platform: windows-x64
           - os: macos-latest
-            asset: PhotoOrganizer-macos-arm64.zip
+            platform: macos-arm64
           - os: ubuntu-latest
-            asset: PhotoOrganizer-linux-x64.tar.gz
+            platform: linux-x64
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -35,35 +37,55 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Read version
+        run: |
+          VERSION=$(python -c "import re; print(re.search(r'^VERSION\s*=\s*\"(.+?)\"', open('main.py', encoding='utf-8').read(), re.M).group(1))")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "NAME=MediaOrganizer-$VERSION" >> "$GITHUB_ENV"
+          TAG="${{ github.event.release.tag_name }}"
+          if [ "${{ github.event_name }}" = "release" ] && [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::Тег релиза $TAG не совпадает с версией в main.py (v$VERSION)"
+            exit 1
+          fi
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      # macOS: .app-бандл (onefile + windowed на macOS не поддерживается)
-      # Windows / Linux: один исполняемый файл
+      # macOS: MediaOrganizer.app (onefile + windowed на macOS не поддерживается)
+      # Windows / Linux: один исполняемый файл MediaOrganizer-<версия>
       - name: Build
         run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then MODE=--onedir; else MODE=--onefile; fi
-          pyinstaller $MODE --windowed --name PhotoOrganizer \
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            ARGS="--onedir --name MediaOrganizer --osx-bundle-identifier io.github.cherkashinda.mediaorganizer"
+          else
+            ARGS="--onefile --name $NAME"
+          fi
+          pyinstaller $ARGS --windowed \
             --hidden-import=PIL._tkinter_finder \
             --collect-all exifread --collect-all mutagen --collect-all piexif \
             main.py
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            plutil -replace CFBundleShortVersionString -string "$VERSION" dist/MediaOrganizer.app/Contents/Info.plist
+            plutil -replace CFBundleVersion -string "$VERSION" dist/MediaOrganizer.app/Contents/Info.plist
+          fi
 
       - name: Package
         run: |
+          ASSET="$NAME-${{ matrix.platform }}"
           cp README.md dist/
           cd dist
           case "$RUNNER_OS" in
-            Windows) 7z a "../${{ matrix.asset }}" PhotoOrganizer.exe README.md ;;
-            macOS)   ditto -c -k --keepParent PhotoOrganizer.app "../${{ matrix.asset }}" ;;
-            Linux)   chmod +x PhotoOrganizer && tar czf "../${{ matrix.asset }}" PhotoOrganizer README.md ;;
+            Windows) 7z a "../$ASSET.zip" "$NAME.exe" README.md ;;
+            macOS)   ditto -c -k --keepParent MediaOrganizer.app "../$ASSET.zip" ;;
+            Linux)   chmod +x "$NAME" && tar czf "../$ASSET.tar.gz" "$NAME" README.md ;;
           esac
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}
+          name: ${{ matrix.platform }}
+          path: MediaOrganizer-*.*
 
   upload:
     needs: build

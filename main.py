@@ -1,5 +1,5 @@
 """
-PhotoOrganizer v3.1
+Media Organizer
 Вкладки: Статистика | Сортировка | Карта архива | Скриншоты | Дубликаты | Запись EXIF
 
 Изменения v3.1:
@@ -44,7 +44,8 @@ try:
 except ImportError:
     PIEXIF_AVAILABLE = False
 
-VERSION = "3.1"
+# Единственное место, где задаётся версия. Тег релиза на GitHub должен быть v<VERSION>.
+VERSION = "3.2"
 
 PHOTO_EXTS = {
     ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif",
@@ -558,7 +559,7 @@ def category_label(ext):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(f"PhotoOrganizer v{VERSION}")
+        self.title(f"Media Organizer v{VERSION}")
         self.resizable(True, True)
         self.theme = "dark"
 
@@ -711,7 +712,7 @@ class App(tk.Tk):
         self.configure(bg=C["BG"])
         self._apply_styles()
         hdr = tk.Frame(self, bg=C["BG"], padx=16, pady=8); hdr.pack(fill="x")
-        tk.Label(hdr, text="📷  PhotoOrganizer",
+        tk.Label(hdr, text="📷  Media Organizer",
                  bg=C["BG"], fg=C["FG"], font=("Segoe UI", 13, "bold")).pack(side="left")
         tk.Label(hdr, text=f"v{VERSION}",
                  bg=C["BG"], fg=C["MUTED"], font=("Segoe UI", 8)).pack(side="left", padx=(8,0), pady=(4,0))

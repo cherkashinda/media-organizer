@@ -1,4 +1,4 @@
-# PhotoOrganizer v3.1
+# Media Organizer
 
 Инструмент для сортировки семейного фотоархива по папкам **Год → Месяц → Фото/Видео**.
 
@@ -165,7 +165,7 @@ pip install pyinstaller
 ### Сборка (один файл, без консоли)
 
 ```bat
-pyinstaller --onefile --windowed --name PhotoOrganizer main.py
+pyinstaller --onefile --windowed --name MediaOrganizer main.py
 ```
 
 Готовый `.exe` появится в папке `dist/`.
@@ -173,7 +173,7 @@ pyinstaller --onefile --windowed --name PhotoOrganizer main.py
 ### Сборка с иконкой
 
 ```bat
-pyinstaller --onefile --windowed --name PhotoOrganizer --icon icon.ico main.py
+pyinstaller --onefile --windowed --name MediaOrganizer --icon icon.ico main.py
 ```
 
 ### Если что-то не работает в EXE
@@ -184,7 +184,7 @@ pyinstaller --onefile --windowed --name PhotoOrganizer --icon icon.ico main.py
 pyinstaller ^
   --onefile ^
   --windowed ^
-  --name PhotoOrganizer ^
+  --name MediaOrganizer ^
   --hidden-import=PIL._tkinter_finder ^
   --hidden-import=exifread ^
   --hidden-import=mutagen.mp4 ^
@@ -199,10 +199,10 @@ pyinstaller ^
 Запускается быстрее (нет распаковки при старте):
 
 ```bat
-pyinstaller --onedir --windowed --name PhotoOrganizer main.py
+pyinstaller --onedir --windowed --name MediaOrganizer main.py
 ```
 
-Результат в `dist/PhotoOrganizer/` — копируй всю папку целиком.
+Результат в `dist/MediaOrganizer/` — копируй всю папку целиком.
 
 ---
 

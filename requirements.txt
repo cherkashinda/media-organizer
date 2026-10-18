@@ -1,4 +1,4 @@
-# PhotoOrganizer v2.0 — зависимости
+# Media Organizer — зависимости
 # Установка: pip install -r requirements.txt
 
 # Чтение EXIF из JPEG, HEIC, RAW (Canon CR2, Nikon NEF, Sony ARW и др.)
