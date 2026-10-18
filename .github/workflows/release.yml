@@ -4,7 +4,7 @@ name: Release
 # Собранные программы прикрепляются к этому релизу автоматически.
 # Ручной запуск (Actions → Release → Run workflow) — только тестовая сборка, без релиза.
 #
-# Версия берётся из VERSION в main.py. Тег релиза должен быть v<VERSION>, иначе сборка упадёт.
+# Версия берётся из VERSION в main.py. Тег релиза должен совпадать с ней (3.2 или v3.2), иначе сборка упадёт.
 on:
   release:
     types: [published]
@@ -42,9 +42,9 @@ jobs:
           VERSION=$(python -c "import re; print(re.search(r'^VERSION\s*=\s*\"(.+?)\"', open('main.py', encoding='utf-8').read(), re.M).group(1))")
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "NAME=MediaOrganizer-$VERSION" >> "$GITHUB_ENV"
-          TAG="${{ github.event.release.tag_name }}"
-          if [ "${{ github.event_name }}" = "release" ] && [ "$TAG" != "v$VERSION" ]; then
-            echo "::error::Тег релиза $TAG не совпадает с версией в main.py (v$VERSION)"
+          TAG="${{ github.event.release.tag_name }}"; TAG="${TAG#v}"
+          if [ "${{ github.event_name }}" = "release" ] && [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Тег релиза $TAG не совпадает с версией в main.py ($VERSION)"
             exit 1
           fi
 
